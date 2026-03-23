@@ -1,11 +1,28 @@
-
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
 from pathlib import Path
+import pandas as pd
+import streamlit as st
 
-DATA_DIR = Path(__file__).parent / "data"
+BASE_DIR = Path(__file__).resolve().parent
+
+@st.cache_data
+def load_data():
+    files = {
+        "villages": BASE_DIR / "villages.csv",
+        "daily": BASE_DIR / "daily_usage.csv",
+        "maintenance": BASE_DIR / "maintenance_log.csv",
+    }
+
+    missing = [str(path) for path in files.values() if not path.exists()]
+    if missing:
+        st.error("Missing required files:")
+        for item in missing:
+            st.write(f"- {item}")
+        st.stop()
+
+    villages = pd.read_csv(files["villages"])
+    daily_usage = pd.read_csv(files["daily"], parse_dates=["date"])
+    maintenance = pd.read_csv(files["maintenance"], parse_dates=["event_date"])
+    return villages, daily_usage, maintenance
 
 st.set_page_config(page_title="StratWater AI", page_icon="💧", layout="wide")
 
