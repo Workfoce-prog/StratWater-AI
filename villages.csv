@@ -1,0 +1,6 @@
+village,country,lat,lon,households,population_served,uptime_pct,failures_ytd,avg_daily_liters,annual_revenue_usd,capex_usd,tank_fill_pct,pump_load_pct,collection_rate,operator_trained,annual_opex_usd
+Sikasso Pilot A,Mali,11.311,-5.669,420,84,97.2,1,15800,10400,18000,72,68,0.92,1,6400
+Kayes Pilot B,Mali,14.446,-11.444,390,78,91.0,3,13250,9700,18000,48,83,0.86,1,7200
+Koulikoro Pilot C,Mali,12.862,-7.559,405,81,94.5,2,14500,9800,18000,55,74,0.89,1,6900
+Tamale Partner D,Ghana,9.407,-0.853,460,88,96.1,1,17300,11000,18000,79,62,0.95,1,6600
+Thiès Partner E,Senegal,14.788,-16.925,430,86,92.8,2,16150,10200,18000,59,71,0.91,1,6800
