@@ -236,10 +236,9 @@ k3.metric("Avg Daily Usage (L)", f"{float(village_row['Avg Daily Usage']):,.0f}"
 k4.metric("System Status", village_row["System Status"])
 
 # ---------- Tabs ----------
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-    ["Overview", "Water Usage", "AI Scores", "Maintenance", "Financials", "Map"]
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+    ["Overview", "Water Usage", "AI Scores", "Maintenance", "Financials", "Map", "Insights & Recommendations"]
 )
-
 with tab1:
     st.subheader(f"Village Overview: {selected_village}")
 
@@ -375,3 +374,86 @@ with tab6:
     else:
         st.map(map_df.rename(columns={"Latitude": "lat", "Longitude": "lon"}), use_container_width=True)
         st.dataframe(map_df, use_container_width=True, hide_index=True)
+with tab7:
+    st.subheader("🧠 AI Insights & Recommendations")
+
+    reliability = int(village_row["Reliability Score"])
+    risk = int(village_row["Maintenance Risk"])
+    stress = int(village_row["Water Stress"])
+    sustainability = int(village_row["Sustainability Score"])
+
+    # ---------- Reliability ----------
+    st.markdown("### 💧 Water Reliability Score")
+    st.write(f"Score: **{reliability}/100**")
+
+    if reliability >= 80:
+        st.success("System is highly reliable with minimal downtime.")
+        st.write("**Recommendation:** Maintain current operations and continue preventive maintenance.")
+    elif reliability >= 60:
+        st.warning("System reliability is moderate. There are occasional disruptions.")
+        st.write("**Recommendation:** Increase maintenance frequency and monitor system components.")
+    else:
+        st.error("System reliability is poor. Frequent failures detected.")
+        st.write("**Recommendation:** Immediate technical intervention required. Consider pump replacement or system upgrade.")
+
+    st.markdown("---")
+
+    # ---------- Maintenance Risk ----------
+    st.markdown("### 🔧 Maintenance Risk Score")
+    st.write(f"Score: **{risk}/100**")
+
+    if risk <= 30:
+        st.success("Low risk of system failure.")
+        st.write("**Recommendation:** Continue routine monitoring.")
+    elif risk <= 60:
+        st.warning("Moderate risk of failure.")
+        st.write("**Recommendation:** Schedule preventive maintenance and inspect key components.")
+    else:
+        st.error("High risk of failure detected.")
+        st.write("**Recommendation:** Immediate inspection required. Allocate budget for repairs.")
+
+    st.markdown("---")
+
+    # ---------- Water Stress ----------
+    st.markdown("### 🌍 Water Stress Index")
+    st.write(f"Score: **{stress}/100**")
+
+    if stress <= 30:
+        st.success("Water supply meets community demand.")
+        st.write("**Recommendation:** No immediate action required.")
+    elif stress <= 60:
+        st.warning("Water demand is approaching supply limits.")
+        st.write("**Recommendation:** Monitor usage trends and consider capacity expansion.")
+    else:
+        st.error("Water demand exceeds supply capacity.")
+        st.write("**Recommendation:** Expand infrastructure (additional borehole or storage tank).")
+
+    st.markdown("---")
+
+    # ---------- Sustainability ----------
+    st.markdown("### 💰 Financial Sustainability Score")
+    st.write(f"Score: **{sustainability}/100**")
+
+    if sustainability >= 80:
+        st.success("System is financially sustainable.")
+        st.write("**Recommendation:** Maintain current pricing and expand to new villages.")
+    elif sustainability >= 60:
+        st.warning("System is near break-even.")
+        st.write("**Recommendation:** Improve revenue collection or reduce operational costs.")
+    else:
+        st.error("System is not financially sustainable.")
+        st.write("**Recommendation:** Revise pricing model or seek external funding support.")
+
+    st.markdown("---")
+
+    # ---------- OVERALL STRATEGIC RECOMMENDATION ----------
+    st.markdown("## 🚀 Overall Strategic Recommendation")
+
+    if reliability < 60 or risk > 60:
+        st.error("🔴 Critical System: Immediate technical intervention required.")
+    elif stress > 60:
+        st.warning("🟠 Capacity Issue: Expand water supply infrastructure.")
+    elif sustainability < 60:
+        st.warning("🟡 Financial Risk: Improve revenue model.")
+    else:
+        st.success("🟢 System performing well: Ready for scaling and replication.")
