@@ -52,6 +52,34 @@ def water_stress_index(population: float, avg_daily_usage: float) -> int:
     return 85
 
 
+def seasonal_dryness_score(avg_rainfall_mm: float, dry_season_months: float, temperature_c: float = 0) -> int:
+    score = 20
+
+    if pd.notna(avg_rainfall_mm):
+        if avg_rainfall_mm < 400:
+            score += 35
+        elif avg_rainfall_mm < 700:
+            score += 20
+        elif avg_rainfall_mm < 1000:
+            score += 10
+
+    if pd.notna(dry_season_months):
+        if dry_season_months >= 8:
+            score += 30
+        elif dry_season_months >= 6:
+            score += 20
+        elif dry_season_months >= 4:
+            score += 10
+
+    if pd.notna(temperature_c):
+        if temperature_c >= 38:
+            score += 15
+        elif temperature_c >= 33:
+            score += 8
+
+    return min(int(score), 100)
+
+
 def sustainability_score(monthly_revenue: float, monthly_cost: float) -> int:
     if pd.isna(monthly_revenue) or pd.isna(monthly_cost) or monthly_cost <= 0:
         return 0
@@ -154,6 +182,23 @@ def interpret_water_stress(score: int) -> tuple[str, str]:
     )
 
 
+def interpret_seasonal_dryness(score: int) -> tuple[str, str]:
+    if score <= 30:
+        return (
+            "Seasonal weather conditions appear favorable, with relatively low dryness pressure on water supply.",
+            "Maintain current monitoring and continue observing seasonal rainfall patterns."
+        )
+    if score <= 60:
+        return (
+            "Moderate seasonal dryness may place periodic pressure on supply, especially during dry months.",
+            "Prepare for seasonal demand surges, monitor storage levels, and strengthen drought contingency planning."
+        )
+    return (
+        "High seasonal dryness risk suggests strong exposure to drought-related supply stress.",
+        "Increase storage capacity, strengthen dry-season planning, and assess backup supply options or additional boreholes."
+    )
+
+
 def interpret_sustainability(score: int) -> tuple[str, str]:
     if score >= 80:
         return (
@@ -175,6 +220,7 @@ def overall_narrative(row: pd.Series) -> str:
     reliability = int(row["Reliability Score"])
     risk = int(row["Maintenance Risk"])
     stress = int(row["Water Stress"])
+    dryness = int(row["Seasonal Dryness Score"])
     sustainability = int(row["Sustainability Score"])
 
     if reliability < 60 or risk > 60:
@@ -187,13 +233,18 @@ def overall_narrative(row: pd.Series) -> str:
             f"{row['Village']} is showing signs of supply pressure. The current system may be insufficient for demand, "
             "especially during peak or seasonal stress periods. Capacity expansion should be assessed."
         )
+    if dryness > 60:
+        return (
+            f"{row['Village']} faces elevated seasonal dryness pressure. Even if the current system is functioning, "
+            "dry-season conditions may reduce resilience and increase future water stress. Storage and drought planning should be strengthened."
+        )
     if sustainability < 60:
         return (
             f"{row['Village']} is operationally functional, but the financial model is fragile. "
             "Improved collections, cost control, or supplemental financing are recommended."
         )
     return (
-        f"{row['Village']} is performing well across technical and financial indicators. "
+        f"{row['Village']} is performing well across technical, climate, and financial indicators. "
         "This site may be suitable as a model for replication and scale."
     )
 
@@ -202,12 +253,15 @@ def overall_recommendation(row: pd.Series) -> str:
     reliability = int(row["Reliability Score"])
     risk = int(row["Maintenance Risk"])
     stress = int(row["Water Stress"])
+    dryness = int(row["Seasonal Dryness Score"])
     sustainability = int(row["Sustainability Score"])
 
     if reliability < 60 or risk > 60:
         return "Immediate technical intervention required."
     if stress > 60:
         return "Capacity expansion or storage improvement recommended."
+    if dryness > 60:
+        return "Dry-season resilience planning and additional storage are recommended."
     if sustainability < 60:
         return "Financial model review recommended."
     return "System is stable and ready for scale or replication."
@@ -224,7 +278,7 @@ def build_pdf_report(row: pd.Series) -> bytes:
     def write_line(text: str, font="Helvetica", size=11, gap=line_gap):
         nonlocal y
         pdf.setFont(font, size)
-        pdf.drawString(50, y, text[:110])
+        pdf.drawString(50, y, str(text)[:110])
         y -= gap
 
     pdf.setTitle(f"StratWater_AI_Report_{row['Village']}")
@@ -237,18 +291,23 @@ def build_pdf_report(row: pd.Series) -> bytes:
     write_line(f"Failures: {int(row['Failures'])}")
     write_line(f"Maintenance Events: {int(row['Maintenance_Events'])}")
     write_line(f"Downtime Hours: {float(row['Total_Downtime_Hours']):.1f}")
+    write_line(f"Average Rainfall (mm): {float(row['avg_rainfall_mm']):,.0f}")
+    write_line(f"Dry Season Months: {float(row['dry_season_months']):.0f}")
+    write_line(f"Average Temperature (C): {float(row['temperature_c']):.1f}")
     write_line("")
 
     write_line("AI Scores", "Helvetica-Bold", 13)
     write_line(f"Reliability Score: {int(row['Reliability Score'])}/100")
     write_line(f"Maintenance Risk: {int(row['Maintenance Risk'])}/100")
     write_line(f"Water Stress: {int(row['Water Stress'])}/100")
+    write_line(f"Seasonal Dryness Score: {int(row['Seasonal Dryness Score'])}/100")
     write_line(f"Sustainability Score: {int(row['Sustainability Score'])}/100")
     write_line("")
 
     rel_text, rel_rec = interpret_reliability(int(row["Reliability Score"]))
     risk_text, risk_rec = interpret_maintenance_risk(int(row["Maintenance Risk"]))
     stress_text, stress_rec = interpret_water_stress(int(row["Water Stress"]))
+    dry_text, dry_rec = interpret_seasonal_dryness(int(row["Seasonal Dryness Score"]))
     sust_text, sust_rec = interpret_sustainability(int(row["Sustainability Score"]))
 
     write_line("Interpretation & Recommendations", "Helvetica-Bold", 13)
@@ -260,6 +319,9 @@ def build_pdf_report(row: pd.Series) -> bytes:
     write_line("")
     write_line(f"Water Stress: {stress_text}")
     write_line(f"Recommendation: {stress_rec}")
+    write_line("")
+    write_line(f"Seasonal Dryness: {dry_text}")
+    write_line(f"Recommendation: {dry_rec}")
     write_line("")
     write_line(f"Sustainability: {sust_text}")
     write_line(f"Recommendation: {sust_rec}")
@@ -306,6 +368,9 @@ def load_data():
     cost_col = find_column(villages, ["Monthly Cost", "monthly_cost", "Cost"], required=False)
     lat_col = find_column(villages, ["lat", "latitude", "Latitude"], required=False)
     lon_col = find_column(villages, ["lon", "lng", "longitude", "Longitude"], required=False)
+    rain_col = find_column(villages, ["avg_rainfall_mm", "Average Rainfall", "rainfall_mm", "Rainfall"], required=False)
+    dry_col = find_column(villages, ["dry_season_months", "Dry Season Months", "dry_months"], required=False)
+    temp_col = find_column(villages, ["temperature_c", "Temperature", "temp_c"], required=False)
 
     if pop_col and pop_col != "Population":
         villages = villages.rename(columns={pop_col: "Population"})
@@ -321,8 +386,17 @@ def load_data():
         villages = villages.rename(columns={lat_col: "Latitude"})
     if lon_col and lon_col != "Longitude":
         villages = villages.rename(columns={lon_col: "Longitude"})
+    if rain_col and rain_col != "avg_rainfall_mm":
+        villages = villages.rename(columns={rain_col: "avg_rainfall_mm"})
+    if dry_col and dry_col != "dry_season_months":
+        villages = villages.rename(columns={dry_col: "dry_season_months"})
+    if temp_col and temp_col != "temperature_c":
+        villages = villages.rename(columns={temp_col: "temperature_c"})
 
-    for col in ["Population", "Uptime", "Failures", "Monthly Revenue", "Monthly Cost", "Latitude", "Longitude"]:
+    for col in [
+        "Population", "Uptime", "Failures", "Monthly Revenue", "Monthly Cost",
+        "Latitude", "Longitude", "avg_rainfall_mm", "dry_season_months", "temperature_c"
+    ]:
         if col not in villages.columns:
             villages[col] = pd.NA
 
@@ -394,6 +468,9 @@ def load_data():
     villages["Population"] = pd.to_numeric(villages["Population"], errors="coerce").fillna(0)
     villages["Monthly Revenue"] = pd.to_numeric(villages["Monthly Revenue"], errors="coerce").fillna(0)
     villages["Monthly Cost"] = pd.to_numeric(villages["Monthly Cost"], errors="coerce").fillna(0)
+    villages["avg_rainfall_mm"] = pd.to_numeric(villages["avg_rainfall_mm"], errors="coerce").fillna(0)
+    villages["dry_season_months"] = pd.to_numeric(villages["dry_season_months"], errors="coerce").fillna(0)
+    villages["temperature_c"] = pd.to_numeric(villages["temperature_c"], errors="coerce").fillna(0)
 
     villages["Reliability Score"] = villages.apply(
         lambda row: reliability_score(row["Uptime"], row["Failures"]), axis=1
@@ -403,6 +480,14 @@ def load_data():
     )
     villages["Water Stress"] = villages.apply(
         lambda row: water_stress_index(row["Population"], row["Avg Daily Usage"]), axis=1
+    )
+    villages["Seasonal Dryness Score"] = villages.apply(
+        lambda row: seasonal_dryness_score(
+            row["avg_rainfall_mm"],
+            row["dry_season_months"],
+            row["temperature_c"]
+        ),
+        axis=1
     )
     villages["Sustainability Score"] = villages.apply(
         lambda row: sustainability_score(row["Monthly Revenue"], row["Monthly Cost"]), axis=1
@@ -436,8 +521,8 @@ k3.metric("Avg Daily Usage (L)", f"{float(village_row['Avg Daily Usage']):,.0f}"
 k4.metric("System Status", village_row["System Status"])
 
 # ---------- Tabs ----------
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
-    ["Overview", "Water Usage", "AI Scores", "Maintenance", "Financials", "Map", "Insights & Recommendations"]
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(
+    ["Overview", "Water Usage", "AI Scores", "Maintenance", "Financials", "Map", "Weather & Seasonality", "Insights & Recommendations"]
 )
 
 with tab1:
@@ -474,6 +559,7 @@ with tab1:
             "Reliability Score",
             "Maintenance Risk",
             "Water Stress",
+            "Seasonal Dryness Score",
             "Sustainability Score",
             "System Status",
         ]
@@ -499,11 +585,12 @@ with tab2:
 with tab3:
     st.subheader("AI Scores")
 
-    s1, s2, s3, s4 = st.columns(4)
+    s1, s2, s3, s4, s5 = st.columns(5)
     s1.metric("Reliability", int(village_row["Reliability Score"]))
     s2.metric("Maintenance Risk", int(village_row["Maintenance Risk"]))
     s3.metric("Water Stress", int(village_row["Water Stress"]))
-    s4.metric("Sustainability", int(village_row["Sustainability Score"]))
+    s4.metric("Seasonal Dryness", int(village_row["Seasonal Dryness Score"]))
+    s5.metric("Sustainability", int(village_row["Sustainability Score"]))
 
     st.write(f"Reliability: {rag_badge(int(village_row['Reliability Score']), True)}")
     st.progress(int(village_row["Reliability Score"]))
@@ -514,12 +601,15 @@ with tab3:
     st.write(f"Water Stress: {rag_badge(int(village_row['Water Stress']), False)}")
     st.progress(int(village_row["Water Stress"]))
 
+    st.write(f"Seasonal Dryness: {rag_badge(int(village_row['Seasonal Dryness Score']), False)}")
+    st.progress(int(village_row["Seasonal Dryness Score"]))
+
     st.write(f"Sustainability: {rag_badge(int(village_row['Sustainability Score']), True)}")
     st.progress(int(village_row["Sustainability Score"]))
 
     st.write("All Villages Score Comparison")
     score_df = villages.set_index("Village")[
-        ["Reliability Score", "Maintenance Risk", "Water Stress", "Sustainability Score"]
+        ["Reliability Score", "Maintenance Risk", "Water Stress", "Seasonal Dryness Score", "Sustainability Score"]
     ]
     st.bar_chart(score_df, use_container_width=True)
 
@@ -530,10 +620,12 @@ with tab3:
                 "Reliability Score",
                 "Maintenance Risk",
                 "Water Stress Index",
+                "Seasonal Dryness Score",
                 "Sustainability Score",
             ],
             "Meaning": [
                 "Higher is better",
+                "Lower is better",
                 "Lower is better",
                 "Lower is better",
                 "Higher is better",
@@ -542,22 +634,26 @@ with tab3:
                 "0-39 = frequent breakdowns / weak service",
                 "61-100 = high failure risk",
                 "61-100 = high pressure on supply",
+                "61-100 = severe dry-season / climate pressure",
                 "0-39 = financially weak",
             ],
             "Amber": [
                 "40-59 = unstable",
                 "31-60 = moderate risk",
                 "31-60 = moderate stress",
+                "31-60 = moderate seasonal dryness",
                 "40-59 = near break-even risk",
             ],
             "Green": [
                 "60-79 = stable / acceptable",
                 "0-30 = manageable risk",
                 "0-30 = supply generally adequate",
+                "0-30 = manageable dryness pressure",
                 "60-79 = sustainable",
             ],
             "Excellent": [
                 "80-100 = strong performance",
+                "N/A",
                 "N/A",
                 "N/A",
                 "80-100 = highly sustainable",
@@ -620,41 +716,74 @@ with tab6:
         st.dataframe(map_df, use_container_width=True, hide_index=True)
 
 with tab7:
+    st.subheader("Weather & Seasonality")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Average Rainfall (mm)", f"{float(village_row['avg_rainfall_mm']):,.0f}")
+    c2.metric("Dry Season (months)", f"{float(village_row['dry_season_months']):.0f}")
+    c3.metric("Average Temperature (°C)", f"{float(village_row['temperature_c']):.1f}")
+
+    st.write(f"Seasonal Dryness Score: {rag_badge(int(village_row['Seasonal Dryness Score']), False)}")
+    st.progress(int(village_row["Seasonal Dryness Score"]))
+
+    weather_df = pd.DataFrame(
+        {
+            "Metric": ["Average Rainfall (mm)", "Dry Season Months", "Average Temperature (°C)", "Seasonal Dryness Score"],
+            "Value": [
+                float(village_row["avg_rainfall_mm"]),
+                float(village_row["dry_season_months"]),
+                float(village_row["temperature_c"]),
+                int(village_row["Seasonal Dryness Score"]),
+            ],
+        }
+    )
+    st.dataframe(weather_df, use_container_width=True, hide_index=True)
+
+with tab8:
     st.subheader("AI Insights, Meaning, and Recommendations")
 
     reliability = int(village_row["Reliability Score"])
     risk = int(village_row["Maintenance Risk"])
     stress = int(village_row["Water Stress"])
+    dryness = int(village_row["Seasonal Dryness Score"])
     sustainability = int(village_row["Sustainability Score"])
 
     rel_text, rel_rec = interpret_reliability(reliability)
     risk_text, risk_rec = interpret_maintenance_risk(risk)
     stress_text, stress_rec = interpret_water_stress(stress)
+    dry_text, dry_rec = interpret_seasonal_dryness(dryness)
     sust_text, sust_rec = interpret_sustainability(sustainability)
 
     st.markdown("### 💧 Water Reliability Score")
-    st.write(f"**Meaning:** Measures how consistently the system delivers water with limited breakdowns and downtime.")
+    st.write("**Meaning:** Measures how consistently the system delivers water with limited breakdowns and downtime.")
     st.write(f"**Current Score:** {reliability}/100 — {rag_badge(reliability, True)}")
     st.write(f"**Interpretation:** {rel_text}")
     st.write(f"**Recommendation:** {rel_rec}")
     st.markdown("---")
 
     st.markdown("### 🔧 Maintenance Risk Score")
-    st.write(f"**Meaning:** Estimates the likelihood that the system may require repair or may fail if not serviced.")
+    st.write("**Meaning:** Estimates the likelihood that the system may require repair or may fail if not serviced.")
     st.write(f"**Current Score:** {risk}/100 — {rag_badge(risk, False)}")
     st.write(f"**Interpretation:** {risk_text}")
     st.write(f"**Recommendation:** {risk_rec}")
     st.markdown("---")
 
     st.markdown("### 🌍 Water Stress Index")
-    st.write(f"**Meaning:** Assesses whether current water supply is sufficient relative to community demand.")
+    st.write("**Meaning:** Assesses whether current water supply is sufficient relative to community demand.")
     st.write(f"**Current Score:** {stress}/100 — {rag_badge(stress, False)}")
     st.write(f"**Interpretation:** {stress_text}")
     st.write(f"**Recommendation:** {stress_rec}")
     st.markdown("---")
 
+    st.markdown("### ☀️ Seasonal Dryness Score")
+    st.write("**Meaning:** Measures drought and weather-related pressure on the water system based on rainfall, dry-season duration, and heat conditions.")
+    st.write(f"**Current Score:** {dryness}/100 — {rag_badge(dryness, False)}")
+    st.write(f"**Interpretation:** {dry_text}")
+    st.write(f"**Recommendation:** {dry_rec}")
+    st.markdown("---")
+
     st.markdown("### 💰 Financial Sustainability Score")
-    st.write(f"**Meaning:** Measures whether current revenue is strong enough to support operating and maintenance costs over time.")
+    st.write("**Meaning:** Measures whether current revenue is strong enough to support operating and maintenance costs over time.")
     st.write(f"**Current Score:** {sustainability}/100 — {rag_badge(sustainability, True)}")
     st.write(f"**Interpretation:** {sust_text}")
     st.write(f"**Recommendation:** {sust_rec}")
@@ -667,7 +796,7 @@ with tab7:
     overall = overall_recommendation(village_row)
     if "Immediate" in overall:
         st.error(overall)
-    elif "Capacity" in overall or "Financial" in overall:
+    elif "Capacity" in overall or "Financial" in overall or "Dry-season" in overall:
         st.warning(overall)
     else:
         st.success(overall)
