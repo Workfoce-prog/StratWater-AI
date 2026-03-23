@@ -1,6 +1,10 @@
 from pathlib import Path
+from io import BytesIO
 import pandas as pd
 import streamlit as st
+
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 st.set_page_config(page_title="StratWater AI", layout="wide")
 
@@ -63,12 +67,212 @@ def sustainability_score(monthly_revenue: float, monthly_cost: float) -> int:
     return 20
 
 
-def status_label(score: int) -> str:
+def system_status(score: int) -> str:
     if score >= 80:
         return "Good"
     if score >= 60:
         return "Watch"
     return "Critical"
+
+
+def rag_label(score: int, higher_is_better: bool = True) -> str:
+    if higher_is_better:
+        if score >= 80:
+            return "Excellent"
+        if score >= 60:
+            return "Green"
+        if score >= 40:
+            return "Amber"
+        return "Red"
+    else:
+        if score <= 30:
+            return "Green"
+        if score <= 60:
+            return "Amber"
+        return "Red"
+
+
+def rag_badge(score: int, higher_is_better: bool = True) -> str:
+    label = rag_label(score, higher_is_better)
+    emoji = {
+        "Excellent": "🔵",
+        "Green": "🟢",
+        "Amber": "🟠",
+        "Red": "🔴",
+    }[label]
+    return f"{emoji} {label}"
+
+
+def interpret_reliability(score: int) -> tuple[str, str]:
+    if score >= 80:
+        return (
+            "The water system is operating reliably with limited disruption.",
+            "Maintain current preventive maintenance schedule, continue uptime monitoring, and document best practices for replication."
+        )
+    if score >= 60:
+        return (
+            "The system is moderately reliable, but periodic performance issues are emerging.",
+            "Increase maintenance frequency, inspect pump components, and track downtime causes before failures worsen."
+        )
+    return (
+        "The system has low reliability and frequent interruptions are likely affecting service delivery.",
+        "Urgent technical review is needed. Inspect the pump, power system, and piping. Consider component replacement or system redesign."
+    )
+
+
+def interpret_maintenance_risk(score: int) -> tuple[str, str]:
+    if score <= 30:
+        return (
+            "Current maintenance risk is low.",
+            "Continue routine inspections and preserve a spare-parts inventory for quick response."
+        )
+    if score <= 60:
+        return (
+            "Maintenance risk is moderate and requires proactive attention.",
+            "Schedule preventive servicing, review downtime patterns, and assign a local maintenance focal point."
+        )
+    return (
+        "Maintenance risk is high and the system may be approaching failure.",
+        "Prioritize immediate inspection, allocate repair funds, and prepare contingency plans to avoid service interruption."
+    )
+
+
+def interpret_water_stress(score: int) -> tuple[str, str]:
+    if score <= 30:
+        return (
+            "Current water supply appears sufficient relative to community demand.",
+            "Maintain monitoring and preserve current operating capacity."
+        )
+    if score <= 60:
+        return (
+            "Demand is beginning to pressure available water supply.",
+            "Monitor seasonal demand, educate users on conservation, and assess whether storage expansion is needed."
+        )
+    return (
+        "Water demand is likely exceeding or approaching the limits of current supply capacity.",
+        "Evaluate options for added storage, additional boreholes, or distribution redesign to prevent shortages."
+    )
+
+
+def interpret_sustainability(score: int) -> tuple[str, str]:
+    if score >= 80:
+        return (
+            "The system appears financially sustainable under current conditions.",
+            "Maintain the current fee model, keep transparent records, and assess readiness for expansion."
+        )
+    if score >= 60:
+        return (
+            "The system is near sustainability but remains vulnerable to cost or revenue shocks.",
+            "Strengthen collection practices, reduce avoidable costs, and build a reserve fund."
+        )
+    return (
+        "The current financial model is not strong enough to sustain long-term operations.",
+        "Review pricing, collections, subsidies, and partnership options. External support may be needed in the short term."
+    )
+
+
+def overall_narrative(row: pd.Series) -> str:
+    reliability = int(row["Reliability Score"])
+    risk = int(row["Maintenance Risk"])
+    stress = int(row["Water Stress"])
+    sustainability = int(row["Sustainability Score"])
+
+    if reliability < 60 or risk > 60:
+        return (
+            f"{row['Village']} is currently a high-priority site. Reliability is weak and/or maintenance risk is elevated, "
+            "suggesting a near-term operational threat. Immediate technical assessment and repair planning are recommended."
+        )
+    if stress > 60:
+        return (
+            f"{row['Village']} is showing signs of supply pressure. The current system may be insufficient for demand, "
+            "especially during peak or seasonal stress periods. Capacity expansion should be assessed."
+        )
+    if sustainability < 60:
+        return (
+            f"{row['Village']} is operationally functional, but the financial model is fragile. "
+            "Improved collections, cost control, or supplemental financing are recommended."
+        )
+    return (
+        f"{row['Village']} is performing well across technical and financial indicators. "
+        "This site may be suitable as a model for replication and scale."
+    )
+
+
+def overall_recommendation(row: pd.Series) -> str:
+    reliability = int(row["Reliability Score"])
+    risk = int(row["Maintenance Risk"])
+    stress = int(row["Water Stress"])
+    sustainability = int(row["Sustainability Score"])
+
+    if reliability < 60 or risk > 60:
+        return "Immediate technical intervention required."
+    if stress > 60:
+        return "Capacity expansion or storage improvement recommended."
+    if sustainability < 60:
+        return "Financial model review recommended."
+    return "System is stable and ready for scale or replication."
+
+
+def build_pdf_report(row: pd.Series) -> bytes:
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    y = height - 50
+    line_gap = 18
+
+    def write_line(text: str, font="Helvetica", size=11, gap=line_gap):
+        nonlocal y
+        pdf.setFont(font, size)
+        pdf.drawString(50, y, text[:110])
+        y -= gap
+
+    pdf.setTitle(f"StratWater_AI_Report_{row['Village']}")
+
+    write_line("StratWater AI - Village Water Performance Report", "Helvetica-Bold", 16, 24)
+    write_line(f"Village: {row['Village']}", "Helvetica-Bold", 12)
+    write_line(f"Population Served: {int(row['Population']):,}")
+    write_line(f"Uptime (%): {float(row['Uptime']):.1f}")
+    write_line(f"Average Daily Usage (L): {float(row['Avg Daily Usage']):,.0f}")
+    write_line(f"Failures: {int(row['Failures'])}")
+    write_line(f"Maintenance Events: {int(row['Maintenance_Events'])}")
+    write_line(f"Downtime Hours: {float(row['Total_Downtime_Hours']):.1f}")
+    write_line("")
+
+    write_line("AI Scores", "Helvetica-Bold", 13)
+    write_line(f"Reliability Score: {int(row['Reliability Score'])}/100")
+    write_line(f"Maintenance Risk: {int(row['Maintenance Risk'])}/100")
+    write_line(f"Water Stress: {int(row['Water Stress'])}/100")
+    write_line(f"Sustainability Score: {int(row['Sustainability Score'])}/100")
+    write_line("")
+
+    rel_text, rel_rec = interpret_reliability(int(row["Reliability Score"]))
+    risk_text, risk_rec = interpret_maintenance_risk(int(row["Maintenance Risk"]))
+    stress_text, stress_rec = interpret_water_stress(int(row["Water Stress"]))
+    sust_text, sust_rec = interpret_sustainability(int(row["Sustainability Score"]))
+
+    write_line("Interpretation & Recommendations", "Helvetica-Bold", 13)
+    write_line(f"Reliability: {rel_text}")
+    write_line(f"Recommendation: {rel_rec}")
+    write_line("")
+    write_line(f"Maintenance Risk: {risk_text}")
+    write_line(f"Recommendation: {risk_rec}")
+    write_line("")
+    write_line(f"Water Stress: {stress_text}")
+    write_line(f"Recommendation: {stress_rec}")
+    write_line("")
+    write_line(f"Sustainability: {sust_text}")
+    write_line(f"Recommendation: {sust_rec}")
+    write_line("")
+
+    write_line("Overall Narrative", "Helvetica-Bold", 13)
+    write_line(overall_narrative(row))
+    write_line(f"Overall Recommendation: {overall_recommendation(row)}")
+
+    pdf.showPage()
+    pdf.save()
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 # ---------- Data Loading ----------
@@ -92,7 +296,6 @@ def load_data():
     daily_usage = pd.read_csv(files["daily"])
     maintenance = pd.read_csv(files["maintenance"])
 
-    # Normalize village table
     village_col = find_column(villages, ["Village", "village", "Village Name", "name"])
     villages = villages.rename(columns={village_col: "Village"})
 
@@ -123,7 +326,6 @@ def load_data():
         if col not in villages.columns:
             villages[col] = pd.NA
 
-    # Normalize daily usage table
     daily_village_col = find_column(daily_usage, ["Village", "village", "Village Name", "name"])
     daily_date_col = find_column(daily_usage, ["date", "Date"])
     usage_col = find_column(daily_usage, ["Usage", "usage", "Daily Usage", "Water Usage", "liters", "Liters"])
@@ -138,7 +340,6 @@ def load_data():
     daily_usage["date"] = pd.to_datetime(daily_usage["date"], errors="coerce")
     daily_usage["Usage"] = pd.to_numeric(daily_usage["Usage"], errors="coerce")
 
-    # Normalize maintenance table
     maint_village_col = find_column(maintenance, ["Village", "village", "Village Name", "name"])
     maint_date_col = find_column(maintenance, ["event_date", "Event Date", "date", "Date"])
     issue_col = find_column(maintenance, ["issue", "Issue", "Event", "Description"], required=False)
@@ -168,7 +369,6 @@ def load_data():
 
     maintenance["downtime_hours"] = pd.to_numeric(maintenance["downtime_hours"], errors="coerce").fillna(0)
 
-    # Derived metrics
     avg_usage = (
         daily_usage.groupby("Village", as_index=False)["Usage"]
         .mean()
@@ -207,7 +407,7 @@ def load_data():
     villages["Sustainability Score"] = villages.apply(
         lambda row: sustainability_score(row["Monthly Revenue"], row["Monthly Cost"]), axis=1
     )
-    villages["System Status"] = villages["Reliability Score"].apply(status_label)
+    villages["System Status"] = villages["Reliability Score"].apply(system_status)
 
     return villages, daily_usage, maintenance
 
@@ -239,6 +439,7 @@ k4.metric("System Status", village_row["System Status"])
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
     ["Overview", "Water Usage", "AI Scores", "Maintenance", "Financials", "Map", "Insights & Recommendations"]
 )
+
 with tab1:
     st.subheader(f"Village Overview: {selected_village}")
 
@@ -304,16 +505,16 @@ with tab3:
     s3.metric("Water Stress", int(village_row["Water Stress"]))
     s4.metric("Sustainability", int(village_row["Sustainability Score"]))
 
-    st.write("Reliability Score")
+    st.write(f"Reliability: {rag_badge(int(village_row['Reliability Score']), True)}")
     st.progress(int(village_row["Reliability Score"]))
 
-    st.write("Maintenance Risk")
+    st.write(f"Maintenance Risk: {rag_badge(int(village_row['Maintenance Risk']), False)}")
     st.progress(int(village_row["Maintenance Risk"]))
 
-    st.write("Water Stress")
+    st.write(f"Water Stress: {rag_badge(int(village_row['Water Stress']), False)}")
     st.progress(int(village_row["Water Stress"]))
 
-    st.write("Sustainability Score")
+    st.write(f"Sustainability: {rag_badge(int(village_row['Sustainability Score']), True)}")
     st.progress(int(village_row["Sustainability Score"]))
 
     st.write("All Villages Score Comparison")
@@ -321,6 +522,49 @@ with tab3:
         ["Reliability Score", "Maintenance Risk", "Water Stress", "Sustainability Score"]
     ]
     st.bar_chart(score_df, use_container_width=True)
+
+    st.markdown("### Score Legend")
+    legend_df = pd.DataFrame(
+        {
+            "Score Type": [
+                "Reliability Score",
+                "Maintenance Risk",
+                "Water Stress Index",
+                "Sustainability Score",
+            ],
+            "Meaning": [
+                "Higher is better",
+                "Lower is better",
+                "Lower is better",
+                "Higher is better",
+            ],
+            "Red": [
+                "0-39 = frequent breakdowns / weak service",
+                "61-100 = high failure risk",
+                "61-100 = high pressure on supply",
+                "0-39 = financially weak",
+            ],
+            "Amber": [
+                "40-59 = unstable",
+                "31-60 = moderate risk",
+                "31-60 = moderate stress",
+                "40-59 = near break-even risk",
+            ],
+            "Green": [
+                "60-79 = stable / acceptable",
+                "0-30 = manageable risk",
+                "0-30 = supply generally adequate",
+                "60-79 = sustainable",
+            ],
+            "Excellent": [
+                "80-100 = strong performance",
+                "N/A",
+                "N/A",
+                "80-100 = highly sustainable",
+            ],
+        }
+    )
+    st.dataframe(legend_df, use_container_width=True, hide_index=True)
 
 with tab4:
     st.subheader("Maintenance Log")
@@ -374,86 +618,65 @@ with tab6:
     else:
         st.map(map_df.rename(columns={"Latitude": "lat", "Longitude": "lon"}), use_container_width=True)
         st.dataframe(map_df, use_container_width=True, hide_index=True)
+
 with tab7:
-    st.subheader("🧠 AI Insights & Recommendations")
+    st.subheader("AI Insights, Meaning, and Recommendations")
 
     reliability = int(village_row["Reliability Score"])
     risk = int(village_row["Maintenance Risk"])
     stress = int(village_row["Water Stress"])
     sustainability = int(village_row["Sustainability Score"])
 
-    # ---------- Reliability ----------
+    rel_text, rel_rec = interpret_reliability(reliability)
+    risk_text, risk_rec = interpret_maintenance_risk(risk)
+    stress_text, stress_rec = interpret_water_stress(stress)
+    sust_text, sust_rec = interpret_sustainability(sustainability)
+
     st.markdown("### 💧 Water Reliability Score")
-    st.write(f"Score: **{reliability}/100**")
-
-    if reliability >= 80:
-        st.success("System is highly reliable with minimal downtime.")
-        st.write("**Recommendation:** Maintain current operations and continue preventive maintenance.")
-    elif reliability >= 60:
-        st.warning("System reliability is moderate. There are occasional disruptions.")
-        st.write("**Recommendation:** Increase maintenance frequency and monitor system components.")
-    else:
-        st.error("System reliability is poor. Frequent failures detected.")
-        st.write("**Recommendation:** Immediate technical intervention required. Consider pump replacement or system upgrade.")
-
+    st.write(f"**Meaning:** Measures how consistently the system delivers water with limited breakdowns and downtime.")
+    st.write(f"**Current Score:** {reliability}/100 — {rag_badge(reliability, True)}")
+    st.write(f"**Interpretation:** {rel_text}")
+    st.write(f"**Recommendation:** {rel_rec}")
     st.markdown("---")
 
-    # ---------- Maintenance Risk ----------
     st.markdown("### 🔧 Maintenance Risk Score")
-    st.write(f"Score: **{risk}/100**")
-
-    if risk <= 30:
-        st.success("Low risk of system failure.")
-        st.write("**Recommendation:** Continue routine monitoring.")
-    elif risk <= 60:
-        st.warning("Moderate risk of failure.")
-        st.write("**Recommendation:** Schedule preventive maintenance and inspect key components.")
-    else:
-        st.error("High risk of failure detected.")
-        st.write("**Recommendation:** Immediate inspection required. Allocate budget for repairs.")
-
+    st.write(f"**Meaning:** Estimates the likelihood that the system may require repair or may fail if not serviced.")
+    st.write(f"**Current Score:** {risk}/100 — {rag_badge(risk, False)}")
+    st.write(f"**Interpretation:** {risk_text}")
+    st.write(f"**Recommendation:** {risk_rec}")
     st.markdown("---")
 
-    # ---------- Water Stress ----------
     st.markdown("### 🌍 Water Stress Index")
-    st.write(f"Score: **{stress}/100**")
-
-    if stress <= 30:
-        st.success("Water supply meets community demand.")
-        st.write("**Recommendation:** No immediate action required.")
-    elif stress <= 60:
-        st.warning("Water demand is approaching supply limits.")
-        st.write("**Recommendation:** Monitor usage trends and consider capacity expansion.")
-    else:
-        st.error("Water demand exceeds supply capacity.")
-        st.write("**Recommendation:** Expand infrastructure (additional borehole or storage tank).")
-
+    st.write(f"**Meaning:** Assesses whether current water supply is sufficient relative to community demand.")
+    st.write(f"**Current Score:** {stress}/100 — {rag_badge(stress, False)}")
+    st.write(f"**Interpretation:** {stress_text}")
+    st.write(f"**Recommendation:** {stress_rec}")
     st.markdown("---")
 
-    # ---------- Sustainability ----------
     st.markdown("### 💰 Financial Sustainability Score")
-    st.write(f"Score: **{sustainability}/100**")
-
-    if sustainability >= 80:
-        st.success("System is financially sustainable.")
-        st.write("**Recommendation:** Maintain current pricing and expand to new villages.")
-    elif sustainability >= 60:
-        st.warning("System is near break-even.")
-        st.write("**Recommendation:** Improve revenue collection or reduce operational costs.")
-    else:
-        st.error("System is not financially sustainable.")
-        st.write("**Recommendation:** Revise pricing model or seek external funding support.")
-
+    st.write(f"**Meaning:** Measures whether current revenue is strong enough to support operating and maintenance costs over time.")
+    st.write(f"**Current Score:** {sustainability}/100 — {rag_badge(sustainability, True)}")
+    st.write(f"**Interpretation:** {sust_text}")
+    st.write(f"**Recommendation:** {sust_rec}")
     st.markdown("---")
 
-    # ---------- OVERALL STRATEGIC RECOMMENDATION ----------
-    st.markdown("## 🚀 Overall Strategic Recommendation")
+    st.markdown("## 🤖 AI-Generated Narrative Summary")
+    st.info(overall_narrative(village_row))
 
-    if reliability < 60 or risk > 60:
-        st.error("🔴 Critical System: Immediate technical intervention required.")
-    elif stress > 60:
-        st.warning("🟠 Capacity Issue: Expand water supply infrastructure.")
-    elif sustainability < 60:
-        st.warning("🟡 Financial Risk: Improve revenue model.")
+    st.markdown("## 🚀 Overall Strategic Recommendation")
+    overall = overall_recommendation(village_row)
+    if "Immediate" in overall:
+        st.error(overall)
+    elif "Capacity" in overall or "Financial" in overall:
+        st.warning(overall)
     else:
-        st.success("🟢 System performing well: Ready for scaling and replication.")
+        st.success(overall)
+
+    st.markdown("## 📄 Export Report")
+    pdf_bytes = build_pdf_report(village_row)
+    st.download_button(
+        label="Download Village Performance Report (PDF)",
+        data=pdf_bytes,
+        file_name=f"StratWater_AI_Report_{selected_village.replace(' ', '_')}.pdf",
+        mime="application/pdf",
+    )
